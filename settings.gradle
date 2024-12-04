@@ -4,3 +4,7 @@ plugins {
 }
 
 rootProject.name = 's3-tables-catalog-for-iceberg'
+
+include 'runtime'
+
+project(':runtime').name = 's3-tables-catalog-for-iceberg-runtime'
