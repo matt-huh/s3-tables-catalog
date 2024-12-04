@@ -121,14 +121,49 @@ shadowJar {
     archiveClassifier.set("runtime")
 }
 
+shadowJar.finalizedBy javadocJar
+shadowJar.finalizedBy sourcesJar
+
 publishing {
     publications {
         maven(MavenPublication) {
             from components.java
-            components.shadow
             pom {
                 name = 'Amazon S3 Tables Catalog for Apache Iceberg'
                 description = 'Amazon S3 Tables Catalog for Apache Iceberg.'
+                url = 'https://github.com/awslabs/s3-tables-catalog'
+                inceptionYear = '2024'
+                scm{
+                    url = "https://github.com/awslabs/s3-tables-catalog/tree/main"
+                    connection = "scm:git:ssh://git@github.com:awslabs/s3-tables-catalog.git"
+                    developerConnection = "scm:git:ssh://git@github.com:awslabs/s3-tables-catalog.git"
+                }
+
+                licenses {
+                    license {
+                        name = 'The Apache License, Version 2.0'
+                        url = 'https://www.apache.org/licenses/LICENSE-2.0.txt'
+                        distribution = 'repo'
+                    }
+                }
+
+                developers {
+                    developer {
+                        organization = "Amazon Web Services"
+                        organizationUrl = "https://aws.amazon.com"
+                    }
+                }
+            }
+        }
+
+        shadow(MavenPublication) {
+            from components.shadow
+            artifact sourcesJar
+            artifact javadocJar
+            artifactId = 's3-tables-catalog-for-iceberg-runtime'
+            pom {
+                name = 'Amazon S3 Tables Catalog for Apache Iceberg Runtime Jar'
+                description = 'Amazon S3 Tables Catalog for Apache Iceberg Runtime Jar.'
                 url = 'https://github.com/awslabs/s3-tables-catalog'
                 inceptionYear = '2024'
                 scm{
@@ -164,4 +199,10 @@ publishing {
 
 signing {
     sign publishing.publications.maven
+    sign publishing.publications.shadow
 }
+
+tasks.publishShadowPublicationToMavenLocal.dependsOn tasks.signMavenPublication
+tasks.publishShadowPublicationToMavenRepository.dependsOn tasks.signMavenPublication
+tasks.publishMavenPublicationToMavenLocal.dependsOn tasks.signShadowPublication
+tasks.publishMavenPublicationToMavenRepository.dependsOn tasks.signShadowPublication
