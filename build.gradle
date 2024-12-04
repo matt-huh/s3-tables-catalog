@@ -6,7 +6,7 @@ plugins {
 }
 
 group = 'software.amazon.s3tables'
-version = '0.1.1'
+version = '0.1.2'
 
 // Override main and test code location, as the Java plugin default
 // project layout is 'src/main/java' and 'src/test/java'.
@@ -125,35 +125,7 @@ publishing {
     publications {
         maven(MavenPublication) {
             from components.java
-            pom {
-                name = 'Amazon S3 Tables Catalog for Apache Iceberg'
-                description = 'Amazon S3 Tables Catalog for Apache Iceberg.'
-                url = 'https://github.com/awslabs/s3-tables-catalog'
-                inceptionYear = '2024'
-                scm{
-                    url = "https://github.com/awslabs/s3-tables-catalog/tree/main"
-                    connection = "scm:git:ssh://git@github.com:awslabs/s3-tables-catalog.git"
-                    developerConnection = "scm:git:ssh://git@github.com:awslabs/s3-tables-catalog.git"
-                }
-
-                licenses {
-                    license {
-                        name = 'The Apache License, Version 2.0'
-                        url = 'https://www.apache.org/licenses/LICENSE-2.0.txt'
-                        distribution = 'repo'
-                    }
-                }
-
-                developers {
-                    developer {
-                        organization = "Amazon Web Services"
-                        organizationUrl = "https://aws.amazon.com"
-                    }
-                }
-            }
-        }
-        shadow(MavenPublication) {
-            from components.shadow
+            components.shadow
             pom {
                 name = 'Amazon S3 Tables Catalog for Apache Iceberg'
                 description = 'Amazon S3 Tables Catalog for Apache Iceberg.'
