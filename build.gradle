@@ -199,4 +199,10 @@ publishing {
 
 signing {
     sign publishing.publications.maven
+    sign publishing.publications.shadow
 }
+
+tasks.publishShadowPublicationToMavenLocal.dependsOn tasks.signMavenPublication
+tasks.publishShadowPublicationToMavenRepository.dependsOn tasks.signMavenPublication
+tasks.publishMavenPublicationToMavenLocal.dependsOn tasks.signShadowPublication
+tasks.publishMavenPublicationToMavenRepository.dependsOn tasks.signShadowPublication
