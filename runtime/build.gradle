@@ -12,20 +12,6 @@ version = '0.1.2'
 
 dependencies {
     implementation project(':')
-//    // Pin Caffeine to 2.9.3, as 3.0 dropped compatibility with JDK8
-//    compileOnly 'com.github.ben-manes.caffeine:caffeine:2.9.3'
-//    compileOnly 'org.apache.commons:commons-configuration2:2.11.0'
-//    compileOnly 'software.amazon.awssdk:apache-client:2.29.26'
-//    compileOnly 'software.amazon.awssdk:aws-core:2.29.26'
-//    compileOnly 'software.amazon.awssdk:dynamodb:2.29.26'
-//    compileOnly 'software.amazon.awssdk:glue:2.29.26'
-//    compileOnly 'software.amazon.awssdk:http-client-spi:2.29.26'
-//    compileOnly 'software.amazon.awssdk:kms:2.29.26'
-//    compileOnly 'software.amazon.awssdk:s3:2.29.26'
-//    compileOnly 'software.amazon.awssdk:sdk-core:2.29.26'
-//    compileOnly 'software.amazon.awssdk:sts:2.29.26'
-//    compileOnly 'software.amazon.awssdk:url-connection-client:2.29.26'
-//    compileOnly 'software.amazon.awssdk:s3tables:2.29.26'
 }
 
 java {
@@ -37,9 +23,6 @@ java {
 }
 
 shadowJar {
-
-//    configurations = [project.configurations.compileClasspath]
-
     // exclude dependencies that are already in Iceberg engine runtimes
     dependencies {
         exclude(dependency('com.github.ben-manes.caffeine:caffeine:.*'))
