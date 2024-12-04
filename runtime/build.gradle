@@ -1,0 +1,118 @@
+apply plugin: 'java'
+apply plugin: 'com.gradleup.shadow'
+apply plugin: 'maven-publish'
+apply plugin: 'signing'
+
+repositories {
+    mavenCentral()
+}
+
+group = 'software.amazon.s3tables'
+version = '0.1.2'
+
+dependencies {
+    implementation project(':')
+}
+
+java {
+    toolchain {
+        languageVersion = JavaLanguageVersion.of(8)
+    }
+    withSourcesJar()
+    withJavadocJar()
+}
+
+shadowJar {
+    // exclude dependencies that are already in Iceberg engine runtimes
+    dependencies {
+        exclude(dependency('com.github.ben-manes.caffeine:caffeine:.*'))
+        exclude(dependency('org.apache.iceberg:.*'))
+        exclude(dependency('com.fasterxml.jackson.core:.*'))
+        exclude(dependency('com.google.errorprone:.*'))
+        exclude(dependency('io.airlift:.*'))
+        exclude(dependency('io.netty:.*'))
+        exclude(dependency('org.apache.avro:.*'))
+        exclude(dependency('org.apache.httpcomponents.client5:.*'))
+        exclude(dependency('org.apache.httpcomponents.core5:.*'))
+        exclude(dependency('org.checkerframework:.*'))
+        exclude(dependency('org.roaringbitmap:.*'))
+        exclude(dependency('org.slf4j:.*'))
+    }
+
+    // relocate project specific dependencies
+    relocate 'software.amazon.awssdk', 'software.amazon.s3tables.shaded.awssdk'
+    relocate 'org.apache.commons', 'software.amazon.s3tables.shaded.org.apache.commons'
+    relocate 'io.netty', 'software.amazon.s3tables.shaded.io.netty'
+    relocate 'org.apache.http', 'software.amazon.s3tables.shaded.org.apache.http'
+
+    // relocate all dependencies that Iceberg engine runtimes already relocates
+    relocate 'com.google.errorprone', 'org.apache.iceberg.shaded.com.google.errorprone'
+    relocate 'com.google.flatbuffers', 'org.apache.iceberg.shaded.com.google.flatbuffers'
+    relocate 'com.fasterxml', 'org.apache.iceberg.shaded.com.fasterxml'
+    relocate 'com.github.benmanes', 'org.apache.iceberg.shaded.com.github.benmanes'
+    relocate 'org.checkerframework', 'org.apache.iceberg.shaded.org.checkerframework'
+    relocate 'org.apache.avro', 'org.apache.iceberg.shaded.org.apache.avro'
+    relocate 'avro.shaded', 'org.apache.iceberg.shaded.org.apache.avro.shaded'
+    relocate 'com.thoughtworks.paranamer', 'org.apache.iceberg.shaded.com.thoughtworks.paranamer'
+    relocate 'org.apache.parquet', 'org.apache.iceberg.shaded.org.apache.parquet'
+    relocate 'shaded.parquet', 'org.apache.iceberg.shaded.org.apache.parquet.shaded'
+    relocate 'org.apache.orc', 'org.apache.iceberg.shaded.org.apache.orc'
+    relocate 'io.airlift', 'org.apache.iceberg.shaded.io.airlift'
+    relocate 'org.apache.hc.client5', 'org.apache.iceberg.shaded.org.apache.hc.client5'
+    relocate 'org.apache.hc.core5', 'org.apache.iceberg.shaded.org.apache.hc.core5'
+    relocate 'org.apache.arrow', 'org.apache.iceberg.shaded.org.apache.arrow'
+    relocate 'com.carrotsearch', 'org.apache.iceberg.shaded.com.carrotsearch'
+    relocate 'org.threeten.extra', 'org.apache.iceberg.shaded.org.threeten.extra'
+    relocate 'org.roaringbitmap', 'org.apache.iceberg.shaded.org.roaringbitmap'
+
+    archiveClassifier.set(null)
+}
+
+shadowJar.finalizedBy javadocJar
+shadowJar.finalizedBy sourcesJar
+
+publishing {
+    publications {
+        maven(MavenPublication) {
+            from components.shadow
+            artifact sourcesJar
+            artifact javadocJar
+            pom {
+                name = 'Amazon S3 Tables Catalog for Apache Iceberg Runtime Jar'
+                description = 'Amazon S3 Tables Catalog for Apache Iceberg Runtime Jar.'
+                url = 'https://github.com/awslabs/s3-tables-catalog'
+                inceptionYear = '2024'
+                scm{
+                    url = "https://github.com/awslabs/s3-tables-catalog/tree/main"
+                    connection = "scm:git:ssh://git@github.com:awslabs/s3-tables-catalog.git"
+                    developerConnection = "scm:git:ssh://git@github.com:awslabs/s3-tables-catalog.git"
+                }
+
+                licenses {
+                    license {
+                        name = 'The Apache License, Version 2.0'
+                        url = 'https://www.apache.org/licenses/LICENSE-2.0.txt'
+                        distribution = 'repo'
+                    }
+                }
+
+                developers {
+                    developer {
+                        organization = "Amazon Web Services"
+                        organizationUrl = "https://aws.amazon.com"
+                    }
+                }
+            }
+        }
+    }
+    repositories {
+        maven{
+            url = 'https://aws.oss.sonatype.org/service/local/staging/deploy/maven2/'
+            credentials(PasswordCredentials)
+        }
+    }
+}
+
+signing {
+    sign publishing.publications.maven
+}
