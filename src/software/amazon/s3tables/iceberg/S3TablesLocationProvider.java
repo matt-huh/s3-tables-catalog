@@ -31,9 +31,6 @@ import org.apache.iceberg.relocated.com.google.common.hash.Hashing;
 import org.apache.iceberg.util.LocationUtil;
 
 /**
- * A copy of https://code.amazon.com/packages/Aws157Iceberg/commits/c764ee512b20e298e7a426d12458d658e74d0d43
- * which is in upstream Iceberg, but not yet in all older Iceberg versions.
- * 
  * This location provider provides data locations that are optimized for S3 performance. Both
  * General Purpose buckets and Directory buckets will see better throughput and autoscaling behavior
  * than using the generic ObjectStoreLocationProvider.
