@@ -35,6 +35,7 @@ import org.apache.iceberg.io.FileIO;
 import org.apache.iceberg.io.LocationProvider;
 import org.apache.iceberg.relocated.com.google.common.annotations.VisibleForTesting;
 import org.apache.iceberg.util.PropertyUtil;
+import org.apache.iceberg.util.Tasks;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import software.amazon.awssdk.awscore.exception.AwsServiceException;
@@ -52,6 +53,16 @@ import java.io.Closeable;
 import java.io.IOException;
 import java.util.Map;
 import java.util.Objects;
+import java.util.concurrent.atomic.AtomicReference;
+
+import static org.apache.iceberg.TableProperties.COMMIT_NUM_STATUS_CHECKS;
+import static org.apache.iceberg.TableProperties.COMMIT_NUM_STATUS_CHECKS_DEFAULT;
+import static org.apache.iceberg.TableProperties.COMMIT_STATUS_CHECKS_MAX_WAIT_MS;
+import static org.apache.iceberg.TableProperties.COMMIT_STATUS_CHECKS_MAX_WAIT_MS_DEFAULT;
+import static org.apache.iceberg.TableProperties.COMMIT_STATUS_CHECKS_MIN_WAIT_MS;
+import static org.apache.iceberg.TableProperties.COMMIT_STATUS_CHECKS_MIN_WAIT_MS_DEFAULT;
+import static org.apache.iceberg.TableProperties.COMMIT_STATUS_CHECKS_TOTAL_WAIT_MS;
+import static org.apache.iceberg.TableProperties.COMMIT_STATUS_CHECKS_TOTAL_WAIT_MS_DEFAULT;
 
 // https://iceberg.apache.org/docs/nightly/custom-catalog/#custom-table-operations-implementation
 public class S3TablesCatalogOperations extends BaseMetastoreTableOperations implements Closeable {
@@ -183,7 +194,7 @@ public class S3TablesCatalogOperations extends BaseMetastoreTableOperations impl
     public void doCommit(TableMetadata base, TableMetadata metadata) {
         boolean newTable = false;
         RetryDetector retryDetector = new RetryDetector();
-        CommitStatus commitStatus = CommitStatus.FAILURE;
+        CustomCommitStatus commitStatus = CustomCommitStatus.FAILURE;
         String newMetadataLocation = null;
         String versionToken = null;
         try {
@@ -202,7 +213,6 @@ public class S3TablesCatalogOperations extends BaseMetastoreTableOperations impl
                     .build());
 
             versionToken = tableMetadataLocationResponse.versionToken();
-            
             if (base != null) {
                 // New tables will have a base empty metadata file written by the control plane
                 checkMetadataLocation(tableMetadataLocationResponse, base);
@@ -222,7 +232,7 @@ public class S3TablesCatalogOperations extends BaseMetastoreTableOperations impl
             versionToken = updateTableMetadataLocationResponse.versionToken();
 
             LOG.debug("Successfully updated metadata new version token is: {}", versionToken);
-            commitStatus = CommitStatus.SUCCESS;
+            commitStatus = CustomCommitStatus.SUCCESS;
         } catch (ConflictException e) {
             LOG.error("Failed to commit metadata due to conflict: ", e);
             throw new CommitFailedException(e);
@@ -237,12 +247,12 @@ public class S3TablesCatalogOperations extends BaseMetastoreTableOperations impl
                     tableName,
                     persistFailure);
 
-                commitStatus = checkCommitStatus(newMetadataLocation, metadata);
+                commitStatus = checkCustomCommitStatus(newMetadataLocation, metadata);
             }
 
             // If we got an AWS exception we would usually handle, but find we
             // succeeded on a retry that threw an exception, skip the exception.
-            if (commitStatus != CommitStatus.SUCCESS && isAwsServiceException) {
+            if (commitStatus != CustomCommitStatus.SUCCESS && isAwsServiceException) {
                 LOG.error("Received unexpected failure when committing to {}", tableName, persistFailure);
                 throw new RuntimeException("Persisting failure", persistFailure);
             }
@@ -254,11 +264,12 @@ public class S3TablesCatalogOperations extends BaseMetastoreTableOperations impl
                 throw new CommitFailedException(
                     persistFailure, "Cannot commit %s due to unexpected exception", tableName());
             case UNKNOWN:
+                LOG.error("Commit status unknown ", persistFailure);
                 throw new CommitStateUnknownException(persistFailure);
             }
         }
         finally {
-            if(newTable && commitStatus != CommitStatus.SUCCESS) {
+            if(newTable && commitStatus != CustomCommitStatus.SUCCESS) {
                 try {
                     if (versionToken == null) {
                         LOG.error("[Critical] Couldn't find version token for {} will not try delete table with invalid metadata", tableName);
@@ -291,6 +302,60 @@ public class S3TablesCatalogOperations extends BaseMetastoreTableOperations impl
         }
     }
 
+    private CustomCommitStatus checkCustomCommitStatus(String newMetadataLocation, TableMetadata config) {
+        int maxAttempts =
+            PropertyUtil.propertyAsInt(
+                tableCatalogProperties, COMMIT_NUM_STATUS_CHECKS, COMMIT_NUM_STATUS_CHECKS_DEFAULT);
+        long minWaitMs =
+            PropertyUtil.propertyAsLong(
+                tableCatalogProperties, COMMIT_STATUS_CHECKS_MIN_WAIT_MS, COMMIT_STATUS_CHECKS_MIN_WAIT_MS_DEFAULT);
+        long maxWaitMs =
+            PropertyUtil.propertyAsLong(
+                tableCatalogProperties, COMMIT_STATUS_CHECKS_MAX_WAIT_MS, COMMIT_STATUS_CHECKS_MAX_WAIT_MS_DEFAULT);
+        long totalRetryMs =
+            PropertyUtil.propertyAsLong(
+                tableCatalogProperties,
+                COMMIT_STATUS_CHECKS_TOTAL_WAIT_MS,
+                COMMIT_STATUS_CHECKS_TOTAL_WAIT_MS_DEFAULT);
+
+        AtomicReference<CustomCommitStatus> status = new AtomicReference<>(CustomCommitStatus.UNKNOWN);
+
+        Tasks.foreach(newMetadataLocation)
+            .retry(maxAttempts)
+            .suppressFailureWhenFinished()
+            .exponentialBackoff(minWaitMs, maxWaitMs, totalRetryMs, 2.0)
+            .onFailure(
+                (location, checkException) ->
+                    LOG.error("Cannot check if commit to {} exists.", tableName, checkException))
+            .run(
+                location -> {
+                    boolean commitSuccess = checkCurrentMetadataLocation(newMetadataLocation);
+
+                    if (commitSuccess) {
+                        LOG.info(
+                            "Commit status check: Commit to {} of {} succeeded",
+                            tableName,
+                            newMetadataLocation);
+                        status.set(CustomCommitStatus.SUCCESS);
+                    } else {
+                        LOG.warn(
+                            "Commit status check: Commit to {} of {} unknown, new metadata location is not current "
+                                + "or in history",
+                            tableName,
+                            newMetadataLocation);
+                    }
+                });
+        return status.get();
+    }
+
+    private boolean checkCurrentMetadataLocation(String newMetadataLocation) {
+        TableMetadata metadata = refresh();
+        String currentMetadataFileLocation = metadata.metadataFileLocation();
+        return currentMetadataFileLocation.equals(newMetadataLocation)
+            || metadata.previousFiles().stream()
+            .anyMatch(log -> log.file().equals(newMetadataLocation));
+    }
+
     @VisibleForTesting
     Map<String, String> tableCatalogProperties() {
         return tableCatalogProperties;
@@ -299,5 +364,11 @@ public class S3TablesCatalogOperations extends BaseMetastoreTableOperations impl
     @Override
     public void close() throws IOException {
         closeableGroup.close();
+    }
+
+    public enum CustomCommitStatus {
+        FAILURE,
+        SUCCESS,
+        UNKNOWN
     }
 }
