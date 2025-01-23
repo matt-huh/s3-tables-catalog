@@ -53,7 +53,7 @@ Add the lines below to your pom.xml:
     <version>0.1.4</version>
 </dependency>
 ```
-Or if you using a [BOM](https://aws.amazon.com/blogs/developer/managing-dependencies-with-aws-sdk-for-java-bill-of-materials-module-bom/) just add a dependancy on the s3 tables sdk:
+Or if you using a [BOM](https://aws.amazon.com/blogs/developer/managing-dependencies-with-aws-sdk-for-java-bill-of-materials-module-bom/) just add a dependency on the s3 tables sdk:
 ```
 <dependencyManagement>
     <dependencies>
