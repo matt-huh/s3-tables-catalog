@@ -23,7 +23,7 @@ public class S3TablesProperties implements Serializable {
      * Configure an alternative endpoint of the S3 Tables service to access.
      */
     public static final String S3TABLES_ENDPOINT = "s3tables.endpoint";
-    public static final String S3_TABLES_ICEBERG_CATALOG = "s3tables-iceberg-catalog/0.1.4";
+    public static final String S3_TABLES_ICEBERG_CATALOG = "s3tables-iceberg-catalog/0.1.5";
 
     private String s3tablesEndpoint;
 
