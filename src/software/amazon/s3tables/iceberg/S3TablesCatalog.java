@@ -18,6 +18,7 @@
  */
 package software.amazon.s3tables.iceberg;
 
+import org.apache.iceberg.util.Tasks;
 import software.amazon.s3tables.iceberg.imports.FileIOTracker;
 import org.apache.iceberg.BaseMetastoreCatalog;
 import org.apache.iceberg.CatalogProperties;
@@ -69,10 +70,20 @@ import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 
-public class S3TablesCatalog extends BaseMetastoreCatalog 
+import static org.apache.iceberg.TableProperties.COMMIT_NUM_STATUS_CHECKS;
+import static org.apache.iceberg.TableProperties.COMMIT_NUM_STATUS_CHECKS_DEFAULT;
+import static org.apache.iceberg.TableProperties.COMMIT_STATUS_CHECKS_MAX_WAIT_MS;
+import static org.apache.iceberg.TableProperties.COMMIT_STATUS_CHECKS_MAX_WAIT_MS_DEFAULT;
+import static org.apache.iceberg.TableProperties.COMMIT_STATUS_CHECKS_MIN_WAIT_MS;
+import static org.apache.iceberg.TableProperties.COMMIT_STATUS_CHECKS_MIN_WAIT_MS_DEFAULT;
+import static org.apache.iceberg.TableProperties.COMMIT_STATUS_CHECKS_TOTAL_WAIT_MS;
+import static org.apache.iceberg.TableProperties.COMMIT_STATUS_CHECKS_TOTAL_WAIT_MS_DEFAULT;
+
+public class S3TablesCatalog extends BaseMetastoreCatalog
         implements Closeable, SupportsNamespaces, Configurable<Object> {
 
     private static final Logger LOG = LoggerFactory.getLogger(S3TablesCatalog.class);
@@ -212,14 +223,36 @@ public class S3TablesCatalog extends BaseMetastoreCatalog
                 throw new RuntimeException(e);
             }
             try {
-                GetTableMetadataLocationResponse getTableResponse = tablesClient.getTableMetadataLocation(
-                        GetTableMetadataLocationRequest.builder()
-                                .name(tableIdentifier.name())
-                                .namespace(tableIdentifier.namespace().toString())
-                                .tableBucketARN(catalogOptions.get(CatalogProperties.WAREHOUSE_LOCATION))
-                                .build()
-                );
-                return getTableResponse.warehouseLocation();
+                int maxAttempts =
+                    PropertyUtil.propertyAsInt(
+                        properties(), COMMIT_NUM_STATUS_CHECKS, COMMIT_NUM_STATUS_CHECKS_DEFAULT);
+                long minWaitMs =
+                    PropertyUtil.propertyAsLong(
+                        properties(), COMMIT_STATUS_CHECKS_MIN_WAIT_MS, COMMIT_STATUS_CHECKS_MIN_WAIT_MS_DEFAULT);
+                long maxWaitMs =
+                    PropertyUtil.propertyAsLong(
+                        properties(), COMMIT_STATUS_CHECKS_MAX_WAIT_MS, COMMIT_STATUS_CHECKS_MAX_WAIT_MS_DEFAULT);
+                long totalRetryMs =
+                    PropertyUtil.propertyAsLong(
+                        properties(),
+                        COMMIT_STATUS_CHECKS_TOTAL_WAIT_MS,
+                        COMMIT_STATUS_CHECKS_TOTAL_WAIT_MS_DEFAULT);
+
+                AtomicReference<GetTableMetadataLocationResponse> getTableResponse = new AtomicReference<>();
+
+                Tasks.foreach(tableIdentifier)
+                    .retry(maxAttempts)
+                    .exponentialBackoff(minWaitMs, maxWaitMs, totalRetryMs, 2.0)
+                    .run(
+                        identifier -> {
+                            getTableResponse.set(tablesClient.getTableMetadataLocation(
+                                    GetTableMetadataLocationRequest.builder()
+                                            .name(identifier.name())
+                                            .namespace(identifier.namespace().toString())
+                                            .tableBucketARN(catalogOptions.get(CatalogProperties.WAREHOUSE_LOCATION))
+                                            .build()));
+                        });
+                return getTableResponse.get().warehouseLocation();
             } catch (Exception e) {
                 LOG.error("Failed to get table {}", tableIdentifier.name(), e);
                 throw new RuntimeException(e);
