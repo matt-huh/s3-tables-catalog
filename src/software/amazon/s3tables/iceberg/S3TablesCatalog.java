@@ -103,6 +103,12 @@ public class S3TablesCatalog extends BaseMetastoreCatalog
         this.configuration = configuration;
     }
 
+    @Override
+    protected boolean isValidIdentifier(TableIdentifier tableIdentifier) {
+        final Namespace namespace = tableIdentifier.namespace();
+        return namespace != null && namespace.length() == 1;
+    }
+
     /**
      * Overrides loadTable to return an instance of S3TablesTable rather than BaseTable. Some engines use this to detect
      * the type of the table and apply S3 Tables-specific behavior.
